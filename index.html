@@ -1,0 +1,232 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Party Tracker</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #121212, #1f1f1f);
+      color: #f0f0f0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    h1 {
+      font-size: 2.5em;
+      margin-bottom: 10px;
+      color: #00ffcc;
+    }
+    .card {
+      background: #2a2a2a;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 8px 16px rgba(0, 0, 0, 0.4);
+      max-width: 400px;
+      width: 100%;
+      margin-top: 20px;
+      transition: all 0.3s ease;
+    }
+    input, select, button {
+      width: 100%;
+      padding: 10px;
+      margin: 8px 0;
+      border: none;
+      border-radius: 8px;
+      font-size: 1em;
+    }
+    input, select {
+      background: #444;
+      color: #fff;
+    }
+    button {
+      background-color: #00ffcc;
+      color: #000;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background 0.3s ease;
+    }
+    button:hover {
+      background-color: #00ddb3;
+    }
+    .hidden { display: none; }
+    table {
+      width: 100%;
+      margin-top: 20px;
+      border-collapse: collapse;
+    }
+    th, td {
+      border: 1px solid #444;
+      padding: 10px;
+      text-align: center;
+      background: #1c1c1c;
+    }
+    th {
+      background: #333;
+    }
+  </style>
+</head>
+<body>
+  <h1>🎉 Party Tracker - FINAL VERSION</h1>
+  <div class="card" id="auth">
+    <h2>Login / Signup</h2>
+    <input id="email" type="email" placeholder="Email">
+    <input id="password" type="password" placeholder="Password">
+    <button id="btnSignup">Sign Up</button>
+    <button id="btnLogin">Log In</button>
+  </div>
+  <div class="card hidden" id="app">
+    <button id="btnLogout">Logout</button>
+    <h2>Your Profile</h2>
+    <input id="username" placeholder="Username" />
+    <input id="weight" type="number" min="1" placeholder="Weight (lbs)">
+    <label for="gender">Your birth sex</label>
+    <select id="gender"><option value="male">Male</option><option value="female">Female</option></select>
+    <button id="btnUpdateProfile">Save Profile</button>
+    <h2>Add Drink</h2>
+    <select id="drinkType">
+      <option value="shot">Shot (1.5 fl oz)</option>
+      <option value="can">Can</option>
+      <option value="bottle">Bottle</option>
+    </select>
+    <input id="customFlOz" type="number" placeholder="If can/bottle, enter fl oz">
+    <button id="btnAddDrink">Add Drink</button>
+    <h2>Your BAC Estimate:</h2>
+    <div id="bacDisplay">N/A</div>
+    <h2>Leaderboard</h2>
+    <table id="leaderboard"><thead><tr><th>User</th><th>BAC</th><th>Total Drinks</th></tr></thead><tbody></tbody></table>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-app.js";
+    import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-auth.js";
+    import { getDatabase, ref, set, push, onValue } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyAXZbIfJD9wT3XO52RHy9G6XDrFwE7LdRk",
+      authDomain: "party-drink-tracker.firebaseapp.com",
+      databaseURL: "https://party-drink-tracker-default-rtdb.firebaseio.com",
+      projectId: "party-drink-tracker",
+      storageBucket: "party-drink-tracker.appspot.com",
+      messagingSenderId: "1051270464024",
+      appId: "1:1051270464024:web:b3fb0c397608d43a25f96d",
+      measurementId: "G-2DGTZNVM07"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth();
+    const db = getDatabase();
+
+    const email = document.getElementById("email");
+    const password = document.getElementById("password");
+    const username = document.getElementById("username");
+    const weight = document.getElementById("weight");
+    const gender = document.getElementById("gender");
+    const drinkType = document.getElementById("drinkType");
+    const customFlOz = document.getElementById("customFlOz");
+    const bacDisplay = document.getElementById("bacDisplay");
+    const lbBody = document.querySelector("#leaderboard tbody");
+
+    document.getElementById("btnSignup").onclick = () => {
+      createUserWithEmailAndPassword(auth, email.value, password.value)
+        .then(userCredential => {
+          set(ref(db, 'profiles/' + userCredential.user.uid), {
+            username: username.value,
+            weight: +weight.value,
+            gender: gender.value
+          });
+        }).catch(e => alert(e.message));
+    };
+
+    document.getElementById("btnLogin").onclick = () =>
+      signInWithEmailAndPassword(auth, email.value, password.value).catch(e => alert(e.message));
+
+    document.getElementById("btnLogout").onclick = () => signOut(auth);
+
+    document.getElementById("btnUpdateProfile").onclick = () => {
+      const user = auth.currentUser;
+      if (!user) return;
+      set(ref(db, "profiles/" + user.uid), {
+        username: username.value,
+        weight: +weight.value,
+        gender: gender.value
+      });
+    };
+
+    document.getElementById("btnAddDrink").onclick = () => {
+      const user = auth.currentUser;
+      if (!user) return;
+
+      let flOz = 1.5; // default shot
+      const type = drinkType.value;
+      if (type === "can" || type === "bottle") {
+        const custom = parseFloat(customFlOz.value);
+        if (custom && custom > 0) flOz = custom;
+        else return alert("Enter fl oz for can/bottle");
+      }
+
+      push(ref(db, "drinks/" + user.uid), {
+        time: Date.now(),
+        amount: flOz
+      });
+    };
+
+    onAuthStateChanged(auth, user => {
+      document.getElementById("auth").classList.toggle("hidden", !!user);
+      document.getElementById("app").classList.toggle("hidden", !user);
+      if (!user) return;
+
+      onValue(ref(db, "profiles/" + user.uid), snap => {
+        const data = snap.val() || {};
+        username.value = data.username || "";
+        weight.value = data.weight || "";
+        gender.value = data.gender || "male";
+      });
+
+      onValue(ref(db, "drinks/" + user.uid), snap => {
+        const drinks = [];
+        snap.forEach(child => drinks.push(child.val()));
+        if (!drinks.length) return (bacDisplay.textContent = "N/A");
+        const totalFlOz = drinks.reduce((sum, d) => sum + d.amount, 0);
+        const hours = (Date.now() - drinks[0].time) / 36e5;
+        const weightLbs = parseFloat(weight.value);
+        const genderVal = gender.value;
+        const r = genderVal === "male" ? 0.68 : 0.55;
+        const bac = ((totalFlOz * 0.6 * 5.14) / (weightLbs * r)) - 0.015 * hours;
+        bacDisplay.textContent = bac > 0 ? bac.toFixed(3) : "0.000";
+      });
+
+      onValue(ref(db, "profiles"), snapP => {
+        const profiles = snapP.val() || {};
+        onValue(ref(db, "drinks"), snapD => {
+          const drinks = snapD.val() || {};
+          const list = [];
+          for (const uid in profiles) {
+            const p = profiles[uid];
+            const dArr = drinks[uid] ? Object.values(drinks[uid]) : [];
+            if (!dArr.length) continue;
+            const sum = dArr.reduce((s, d) => s + d.amount, 0);
+            const hrs = (Date.now() - dArr[0].time) / 36e5;
+            const r = p.gender === "male" ? 0.68 : 0.55;
+            const bac = ((sum * 0.6 * 5.14) / (p.weight * r)) - 0.015 * hrs;
+            list.push({ name: p.username || uid.slice(0, 6), bac: bac > 0 ? bac : 0, total: sum });
+          }
+          list.sort((a, b) => a.bac - b.bac);
+          lbBody.innerHTML = "";
+          list.forEach(user => {
+            const tr = lbBody.insertRow();
+            tr.insertCell().textContent = user.name;
+            tr.insertCell().textContent = user.bac.toFixed(3);
+            tr.insertCell().textContent = user.total.toFixed(1);
+          });
+        });
+      });
+    });
+  </script>
+</body>
+</html>
